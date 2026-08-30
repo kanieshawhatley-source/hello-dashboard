@@ -12,6 +12,16 @@ if (!url) {
 const sql = neon(url);
 const schema = await readFile(new URL('../db/schema.sql', import.meta.url), 'utf8');
 
+/**
+ * Run one statement that is a plain string rather than a template literal.
+ *
+ * `neon()` returns a template-tag function; the `sql.query(text)` helper only
+ * exists in later releases of the driver. Handing the tag a strings array
+ * (with `raw`, as a real tagged template has) sends the statement verbatim
+ * with no parameters, which is what schema DDL needs.
+ */
+const run = (text) => sql(Object.assign([text], { raw: [text] }));
+
 // The driver sends one statement per call, so split the file on semicolons.
 const statements = schema
   .split(';')
@@ -19,7 +29,12 @@ const statements = schema
   .filter((s) => s && !s.split('\n').every((line) => line.trim().startsWith('--')));
 
 for (const statement of statements) {
-  await sql.query(statement);
+  try {
+    await run(statement);
+  } catch (error) {
+    console.error(`Failed on:\n${statement}\n\n${error.message}`);
+    process.exit(1);
+  }
 }
 console.log(`Schema applied (${statements.length} statements).`);
 
